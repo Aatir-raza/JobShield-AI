@@ -456,8 +456,8 @@ st.html("""
     <div class="js-eyebrow">✦ AI-POWERED SECURITY</div>
     <h1 class="js-hero-title">JobShield <span class="js-gradient">AI</span></h1>
     <p class="js-hero-copy">
-        Your intelligent shield against fraudulent job postings.<br>
-        Analyze job descriptions with confidence using machine learning.
+        Intelligent job screening powered by machine learning.
+     Identify potential recruitment fraud and make more informed career decisions.
     </p>
 </section>
 """)
