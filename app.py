@@ -12,7 +12,7 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    model_dir = Path(__file__).resolve().parent
+    model_dir = Path(__file__).resolve().parent / "models"
     model = joblib.load(model_dir / "fake_job_model.pkl")
     vectorizer = joblib.load(model_dir / "tfidf_vectorizer.pkl")
 
@@ -21,7 +21,7 @@ def load_model():
 
 @st.cache_resource
 def load_naive_bayes_model():
-    model_dir = Path(__file__).resolve().parent
+    model_dir = Path(__file__).resolve().parent / "models"
     model_path = model_dir / "fake_job_nb_model_v2.pkl"
     vectorizer_path = model_dir / "fake_job_nb_tfidf_vectorizer_v2.pkl"
     missing_files = [
