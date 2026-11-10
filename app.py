@@ -591,11 +591,7 @@ if analyze:
         with metric_columns[2]:
             st.metric("Characters analyzed", f"{len(job_description):,}")
 
-        st.caption(
-            "Each confidence score reflects that            http://localhost:8501 model's prediction for this "
-            "text. It is not a real-world probability of job authenticity, "
-            "and the scores are not combined."
-        )
+        
 
 
 st.html("""
