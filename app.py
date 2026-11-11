@@ -80,36 +80,136 @@ def get_final_decision(logistic_prediction, naive_bayes_prediction):
     )
 
 
-def render_prediction_result(model_name, prediction, confidence):
-    if prediction == 1:
-        status = "FAKE RISK DETECTED"
-        title = "⚠️ Potentially fraudulent"
-        result_class = "danger"
-        copy = (
-            "This model classified the job posting as potentially fake. "
-            "Verify the company and recruiter before sharing personal "
-            "information or making payments."
+def render_analysis_results(
+    logistic_result,
+    naive_bayes_result,
+    job_description,
+):
+    results = [result for result in (logistic_result, naive_bayes_result) if result]
+    if not results:
+        return
+
+    if logistic_result is not None and naive_bayes_result is not None:
+        decision, explanation, alert_type = get_final_decision(
+            logistic_result[0],
+            naive_bayes_result[0],
+        )
+        final_prediction = (
+            1 if decision == "High Fraud Risk"
+            else 0 if decision == "Likely Legitimate"
+            else None
         )
     else:
-        status = "LEGITIMATE SIGNALS"
-        title = "✓ Likely legitimate"
-        result_class = "safe"
-        copy = (
-            "This model classified the job posting as likely legitimate. "
-            "Always independently verify the employer before applying."
+        final_prediction = results[0][0]
+        decision = (
+            "Potentially Fraudulent"
+            if final_prediction == 1
+            else "Legitimate"
+        )
+        explanation = (
+            "The available analysis signal indicates that this posting "
+            "should be independently verified before you apply."
+        )
+        alert_type = "warning"
+
+    authenticity = (
+        "Potentially Fraudulent"
+        if final_prediction != 0
+        else "Legitimate"
+    )
+    result_class = "danger" if final_prediction != 0 else "safe"
+    status_text = "REVIEW REQUIRED" if result_class == "danger" else "LOWER RISK SIGNAL"
+    score = max(result[1] for result in results)
+    score = max(0, min(score, 100))
+
+    job_text = job_description.lower()
+    indicator_rules = (
+        (
+            ("registration fee", "application fee", "processing fee", "pay a fee"),
+            "Upfront registration or application fees",
+        ),
+        (
+            ("guaranteed income", "guaranteed salary", "make $", "per day", "per week"),
+            "Unusually strong or guaranteed earnings claims",
+        ),
+        (
+            ("social security", "ssn", "passport", "bank account", "credit card"),
+            "Requests for sensitive personal information",
+        ),
+        (
+            ("whatsapp", "telegram", "wire transfer", "send money"),
+            "Unusual contact or payment instructions",
+        ),
+    )
+    indicators = [
+        label
+        for terms, label in indicator_rules
+        if any(term in job_text for term in terms)
+    ]
+    company_terms = ("company:", "employer:", "organization:", "inc.", "llc", "ltd")
+    if not any(term in job_text for term in company_terms):
+        indicators.append("Company details are not clearly identified")
+
+    indicator_markup = "".join(
+        f'<li><span class="js-indicator-dot"></span>{indicator}</li>'
+        for indicator in indicators
+    )
+    if not indicator_markup:
+        indicator_markup = (
+            '<li class="js-no-indicators">'
+            '<span class="js-indicator-dot"></span>'
+            "No specific warning signs were detected in the submitted text."
+            "</li>"
         )
 
+    recommendation_title = (
+        "Recommended next step"
+        if alert_type == "success"
+        else "Safety recommendation"
+    )
     st.html(f"""
-    <section class="js-result {result_class}">
-        <span class="js-status {result_class}">{status}</span>
-        <h3 class="js-result-title">{model_name}: {title}</h3>
-        <p class="js-result-copy">{copy}</p>
-        <div class="js-confidence">
-            <div class="js-confidence-line">
-                <span>Model confidence</span><strong>{confidence:.2f}%</strong>
+    <section class="js-analysis">
+        <div class="js-analysis-header">
+            <div>
+                <p class="js-section-kicker">Analysis results</p>
+                <h2 class="js-analysis-title">Job authenticity</h2>
             </div>
-            <div class="js-progress" style="--js-confidence: {confidence:.2f}%">
+            <span class="js-status {result_class}">
+                <span class="js-status-dot"></span>{status_text}
+            </span>
+        </div>
+
+        <div class="js-authenticity {result_class}">
+            <div>
+                <p class="js-card-label">Final assessment</p>
+                <h3>{authenticity}</h3>
+                <p>{explanation}</p>
+            </div>
+            <span class="js-authenticity-mark">{"!" if result_class == "danger" else "✓"}</span>
+        </div>
+
+        <div class="js-risk-card">
+            <div class="js-confidence-line">
+                <span>Fraud risk score <small>(model confidence, not probability)</small></span>
+                <strong>{score:.2f}%</strong>
+            </div>
+            <div class="js-progress {result_class}" style="--js-confidence: {score:.2f}%">
                 <span></span>
+            </div>
+        </div>
+
+        <div class="js-detail-grid">
+            <div class="js-detail-card">
+                <p class="js-card-label">Suspicious indicators</p>
+                <ul class="js-indicators">{indicator_markup}</ul>
+            </div>
+            <div class="js-detail-card js-recommendation">
+                <p class="js-card-label">{recommendation_title}</p>
+                <p>{explanation}</p>
+                <p class="js-recommendation-note">
+                    Verify the employer through its official website, never pay to apply,
+                    and avoid sharing sensitive information before verification.
+                </p>
             </div>
         </div>
     </section>
@@ -327,30 +427,49 @@ html, body, [class*="css"], button, textarea {
     outline-offset: 3px;
 }
 
-.js-result {
+.js-analysis {
     margin-top: 1.5rem;
-    padding: 1.5rem;
+    padding: clamp(1.25rem, 3vw, 2rem);
     border: 1px solid var(--js-border);
     border-radius: 1rem;
     background: #ffffff;
 }
 
-.js-result.safe {
-    border-left: 4px solid var(--js-green);
+.js-analysis-header,
+.js-confidence-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
 }
 
-.js-result.danger {
-    border-left: 4px solid var(--js-red);
+.js-section-kicker,
+.js-card-label {
+    margin: 0;
+    color: var(--js-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.js-analysis-title {
+    margin: 0.3rem 0 0;
+    color: var(--js-ink);
+    font-size: 1.45rem;
+    letter-spacing: -0.035em;
 }
 
 .js-status {
-    display: inline-block;
-    margin-bottom: 0.8rem;
-    padding: 0.35rem 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.7rem;
     border-radius: 999px;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.04em;
+    white-space: nowrap;
 }
 
 .js-status.safe {
@@ -363,27 +482,80 @@ html, body, [class*="css"], button, textarea {
     color: var(--js-red);
 }
 
-.js-result-title {
-    margin: 0 0 0.45rem;
-    color: var(--js-ink);
-    font-size: 1.35rem;
-    font-weight: 700;
+.js-status-dot,
+.js-indicator-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
 }
 
-.js-result-copy {
+.js-authenticity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1.25rem;
+    padding: 1.25rem;
+    border: 1px solid var(--js-border);
+    border-left: 4px solid;
+    border-radius: 0.8rem;
+}
+
+.js-authenticity.safe {
+    border-left-color: var(--js-green);
+    background: var(--js-green-soft);
+}
+
+.js-authenticity.danger {
+    border-left-color: var(--js-red);
+    background: var(--js-red-soft);
+}
+
+.js-authenticity h3 {
+    margin: 0.35rem 0;
+    color: var(--js-ink);
+    font-size: 1.45rem;
+    letter-spacing: -0.04em;
+}
+
+.js-authenticity p:not(.js-card-label),
+.js-recommendation p {
     margin: 0;
     color: var(--js-muted);
     font-size: 0.9rem;
-    line-height: 1.65;
+    line-height: 1.6;
 }
 
-.js-confidence {
-    margin-top: 1.25rem;
+.js-authenticity-mark {
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.js-authenticity.safe .js-authenticity-mark {
+    color: var(--js-green);
+}
+
+.js-authenticity.danger .js-authenticity-mark {
+    color: var(--js-red);
+}
+
+.js-risk-card {
+    margin-top: 1rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--js-border);
+    border-radius: 0.8rem;
 }
 
 .js-confidence-line {
-    display: flex;
-    justify-content: space-between;
     margin-bottom: 0.45rem;
     color: var(--js-muted);
     font-size: 0.78rem;
@@ -391,13 +563,27 @@ html, body, [class*="css"], button, textarea {
 
 .js-confidence-line strong {
     color: var(--js-ink);
+    font-size: 0.95rem;
+}
+
+.js-confidence-line small {
+    color: #999999;
+    font-size: 0.7rem;
 }
 
 .js-progress {
-    height: 0.42rem;
+    height: 0.45rem;
     overflow: hidden;
     border-radius: 999px;
     background: #edf0f4;
+}
+
+.js-progress.safe > span {
+    background: var(--js-green);
+}
+
+.js-progress.danger > span {
+    background: var(--js-red);
 }
 
 .js-progress > span {
@@ -405,7 +591,55 @@ html, body, [class*="css"], button, textarea {
     width: var(--js-confidence);
     height: 100%;
     border-radius: inherit;
-    background: var(--js-blue);
+}
+
+.js-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.js-detail-card {
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--js-border);
+    border-radius: 0.8rem;
+}
+
+.js-indicators {
+    display: grid;
+    gap: 0.65rem;
+    margin: 0.9rem 0 0;
+    padding: 0;
+    color: var(--js-ink);
+    font-size: 0.86rem;
+    line-height: 1.4;
+    list-style: none;
+}
+
+.js-indicators li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+.js-indicator-dot {
+    margin-top: 0.38rem;
+    background: var(--js-red);
+}
+
+.js-indicators .js-no-indicators {
+    color: var(--js-muted);
+}
+
+.js-no-indicators .js-indicator-dot {
+    background: var(--js-green);
+}
+
+.js-recommendation-note {
+    margin-top: 0.8rem !important;
+    color: var(--js-muted);
+    font-size: 0.78rem !important;
 }
 
 .js-footer {
@@ -440,6 +674,8 @@ html, body, [class*="css"], button, textarea {
     .js-nav-note { display: none; }
     .js-hero { padding: 4rem 0.25rem 3.5rem; }
     .js-hero-copy { font-size: 0.95rem; }
+    .js-analysis-header { align-items: flex-start; flex-direction: column; }
+    .js-detail-grid { grid-template-columns: 1fr; }
 }
 </style>
 """)
@@ -518,77 +754,22 @@ if analyze:
                     prediction_errors.append(f"Naive Bayes: {exc}")
 
         st.divider()
-        st.subheader("Analysis results")
 
         if prediction_errors:
-            for prediction_error in prediction_errors:
-                st.error(prediction_error)
+            st.warning(
+                "Some analysis checks were unavailable. Review the result with "
+                "extra caution."
+            )
 
-        result_columns = st.columns(2)
-        if logistic_result is not None:
-            with result_columns[0]:
-                render_prediction_result(
-                    "Logistic Regression",
-                    logistic_result[0],
-                    logistic_result[1],
-                )
-
-        if naive_bayes_result is not None:
-            with result_columns[1]:
-                render_prediction_result(
-                    "Naive Bayes",
-                    naive_bayes_result[0],
-                    naive_bayes_result[1],
-                )
-
-        if logistic_result is not None and naive_bayes_result is not None:
-            decision, explanation, alert_type = get_final_decision(
-                logistic_result[0],
-                naive_bayes_result[0],
-            )
-            st.subheader("Final recommendation")
-            getattr(st, alert_type)(
-                explanation,
-                title=decision,
-            )
-            st.markdown(
-                """
-                **Before taking action:**
-                - Verify the employer through its official website.
-                - Verify the recruiter's identity independently.
-                - Never pay registration or interview fees.
-                - Avoid sharing sensitive information before verification.
-                """
-            )
-            st.caption(
-                "The two model confidence scores are shown separately above. "
-                "They are not averaged or combined."
-            )
+        render_analysis_results(
+            logistic_result,
+            naive_bayes_result,
+            job_description,
+        )
 
         st.write("")
 
-        metric_columns = st.columns(3)
-
-        with metric_columns[0]:
-            if logistic_result is not None:
-                st.metric(
-                    "Logistic confidence",
-                    f"{logistic_result[1]:.2f}%",
-                )
-            else:
-                st.metric("Logistic confidence", "Unavailable")
-
-        with metric_columns[1]:
-            if naive_bayes_result is not None:
-                st.metric(
-                    "Naive Bayes confidence",
-                    f"{naive_bayes_result[1]:.2f}%",
-                )
-            else:
-                st.metric("Naive Bayes confidence", "Unavailable")
-
-        with metric_columns[2]:
-            st.metric("Characters analyzed", f"{len(job_description):,}")
+        st.metric("Characters analyzed", f"{len(job_description):,}")
 
         
 
