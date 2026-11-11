@@ -468,7 +468,6 @@ st.html("""
 <section class="js-panel">
     <h2 class="js-panel-heading">Analyze a job posting</h2>
     <p class="js-panel-copy">
-        Paste the complete job description below to check its authenticity.
     </p>
 </section>
 """)
